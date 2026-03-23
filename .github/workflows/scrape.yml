@@ -1,0 +1,52 @@
+name: Scrape BASF India Jobs
+
+on:
+  schedule:
+    # Every 4 hours (UTC)
+    - cron: "0 */4 * * *"
+  workflow_dispatch: # allow manual trigger from GitHub UI
+
+permissions:
+  contents: write  # needed to push data/jobs.json back to repo
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🎭 Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: 🕷️ Run scraper
+        run: node scraper.js
+
+      - name: 🔍 Check if data changed
+        id: diff
+        run: |
+          git diff --quiet data/jobs.json && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: 💾 Commit & push updated jobs
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/jobs.json
+          git commit -m "chore: update BASF India jobs [$(date -u '+%Y-%m-%d %H:%M UTC')]"
+          git push
+
+      - name: ✅ No changes detected
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "Jobs data unchanged since last run."
