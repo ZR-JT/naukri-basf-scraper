@@ -1,0 +1,17 @@
+{
+  "name": "basf-india-jobs-scraper",
+  "version": "1.0.0",
+  "description": "Scrapes BASF job listings in India from Naukri.com every 4 hours via GitHub Actions.",
+  "main": "scraper.js",
+  "scripts": {
+    "scrape": "node scraper.js",
+    "test": "node scraper.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

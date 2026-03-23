@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BASF India — Live Job Database</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --basf-blue:    #004a96;
+      --basf-accent:  #00a0e3;
+      --bg:           #050b14;
+      --surface:      #0c1825;
+      --surface-2:    #122030;
+      --border:       #1e3550;
+      --text:         #e2eaf5;
+      --text-muted:   #6b8aaa;
+      --tag-bg:       #0d2040;
+      --green:        #00d4a0;
+      --mono:         'DM Mono', monospace;
+      --sans:         'Syne', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── GRID BACKGROUND ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── HEADER ── */
+    header {
+      position: relative;
+      z-index: 10;
+      padding: 2.5rem 3rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 1rem;
+      background: linear-gradient(180deg, rgba(5,11,20,0.98) 0%, rgba(5,11,20,0.85) 100%);
+    }
+
+    .logo-block { display: flex; align-items: center; gap: 1.2rem; }
+
+    .basf-logo {
+      width: 52px; height: 52px;
+      background: var(--basf-blue);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      color: white;
+      border: 1px solid var(--basf-accent);
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+    h1 span { color: var(--basf-accent); }
+
+    .subtitle {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      letter-spacing: 0.03em;
+    }
+
+    .header-meta {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    #meta-last-updated, #meta-total {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+
+    .live-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      margin-right: 6px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── CONTROLS ── */
+    .controls {
+      position: relative;
+      z-index: 10;
+      padding: 1.5rem 3rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 200px;
+      max-width: 400px;
+    }
+    .search-wrap svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+    }
+    input[type="search"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      padding: 0.6rem 0.75rem 0.6rem 2.5rem;
+      border-radius: 6px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="search"]:focus { border-color: var(--basf-accent); }
+    input[type="search"]::placeholder { color: var(--text-muted); }
+
+    select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 6px;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    select:focus { border-color: var(--basf-accent); }
+
+    #result-count {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* ── JOB GRID ── */
+    main {
+      position: relative;
+      z-index: 10;
+      padding: 2rem 3rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .job-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.4rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: border-color 0.2s, transform 0.15s;
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+    }
+    .job-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--basf-blue), var(--basf-accent));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform 0.25s ease;
+    }
+    .job-card:hover {
+      border-color: var(--basf-accent);
+      transform: translateY(-2px);
+    }
+    .job-card:hover::before { transform: scaleX(1); }
+
+    .job-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+    }
+
+    .job-company {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--basf-accent);
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .job-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .meta-pill {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      white-space: nowrap;
+    }
+
+    .job-skills {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      border-top: 1px solid var(--border);
+      padding-top: 0.6rem;
+    }
+
+    .job-actions {
+      margin-top: auto;
+      display: flex;
+      gap: 0.5rem;
+    }
+    .btn-apply {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: white;
+      background: var(--basf-blue);
+      border: none;
+      border-radius: 5px;
+      padding: 0.45rem 0.9rem;
+      text-decoration: none;
+      transition: background 0.2s;
+      letter-spacing: 0.03em;
+    }
+    .btn-apply:hover { background: var(--basf-accent); }
+
+    .job-posted {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      margin-top: auto;
+      padding-top: 0.25rem;
+    }
+
+    /* ── EMPTY STATE ── */
+    #empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    /* ── AI AGENT SECTION ── */
+    .agent-section {
+      position: relative;
+      z-index: 10;
+      margin: 0 3rem 3rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .agent-header {
+      padding: 1rem 1.5rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .agent-header h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .agent-icon {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--basf-blue), var(--basf-accent));
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+    }
+    .agent-body {
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .agent-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .agent-stat-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .agent-stat-value {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .agent-stat-value a {
+      color: var(--basf-accent);
+      text-decoration: none;
+    }
+    .agent-stat-value a:hover { text-decoration: underline; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 700px) {
+      header, .controls, main, .agent-section { padding-left: 1.25rem; padding-right: 1.25rem; }
+      .agent-section { margin-left: 1.25rem; margin-right: 1.25rem; }
+      .agent-body { grid-template-columns: 1fr; }
+      h1 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo-block">
+    <div class="basf-logo">BASF</div>
+    <div>
+      <h1>India Jobs <span>Database</span></h1>
+      <div class="subtitle">SOURCE → naukri.com · FILTER → BASF + India · AUTO-REFRESH → every 4h</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <div id="meta-last-updated"><span class="live-dot"></span>Loading...</div>
+    <div id="meta-total"></div>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="search-wrap">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+    </svg>
+    <input type="search" id="search-input" placeholder="Search title, location, skills…" />
+  </div>
+
+  <select id="location-filter">
+    <option value="">All Locations</option>
+  </select>
+
+  <select id="sort-filter">
+    <option value="default">Sort: Default</option>
+    <option value="title">Sort: Title A–Z</option>
+    <option value="posted">Sort: Newest</option>
+  </select>
+
+  <span id="result-count"></span>
+</div>
+
+<main id="job-grid"></main>
+
+<div class="agent-section">
+  <div class="agent-header">
+    <div class="agent-icon">🤖</div>
+    <h2>AI Agent — Data Access Info</h2>
+  </div>
+  <div class="agent-body">
+    <div class="agent-stat">
+      <span class="agent-stat-label">Raw JSON Endpoint</span>
+      <span class="agent-stat-value"><a id="json-url" href="data/jobs.json" target="_blank">data/jobs.json</a></span>
+    </div>
+    <div class="agent-stat">
+      <span class="agent-stat-label">Last Scraped</span>
+      <span class="agent-stat-value" id="agent-updated">—</span>
+    </div>
+    <div class="agent-stat">
+      <span class="agent-stat-label">Refresh Interval</span>
+      <span class="agent-stat-value">Every 4 hours (GitHub Actions)</span>
+    </div>
+    <div class="agent-stat">
+      <span class="agent-stat-label">Total Active Jobs</span>
+      <span class="agent-stat-value" id="agent-total">—</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── Resolve the absolute JSON URL dynamically (works on any GitHub Pages domain) ───
+  const JSON_URL = new URL("data/jobs.json", window.location.href).href;
+
+  // Update the displayed link
+  document.getElementById("json-url").href = JSON_URL;
+  document.getElementById("json-url").textContent = JSON_URL;
+
+  let allJobs = [];
+
+  async function loadJobs() {
+    try {
+      const res = await fetch(JSON_URL + "?t=" + Date.now()); // bust cache
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      allJobs = data.jobs ?? [];
+      const meta = data.meta ?? {};
+
+      // Header meta
+      const updated = meta.last_updated
+        ? new Date(meta.last_updated).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
+        : "Unknown";
+      document.getElementById("meta-last-updated").innerHTML =
+        `<span class="live-dot"></span>Last updated: ${updated}`;
+      document.getElementById("meta-total").textContent = `${allJobs.length} jobs · BASF India`;
+      document.getElementById("agent-updated").textContent = updated;
+      document.getElementById("agent-total").textContent = allJobs.length;
+
+      // Populate location filter
+      const locations = [...new Set(allJobs.map(j => j.location).filter(l => l && l !== "N/A"))].sort();
+      const locSelect = document.getElementById("location-filter");
+      locations.forEach(loc => {
+        const opt = document.createElement("option");
+        opt.value = loc; opt.textContent = loc;
+        locSelect.appendChild(opt);
+      });
+
+      renderJobs(allJobs);
+    } catch (err) {
+      document.getElementById("job-grid").innerHTML =
+        `<div id="empty-state">⚠️ Could not load jobs.json<br><small>${err.message}</small></div>`;
+    }
+  }
+
+  function renderJobs(jobs) {
+    const grid = document.getElementById("job-grid");
+    document.getElementById("result-count").textContent = `${jobs.length} result${jobs.length !== 1 ? "s" : ""}`;
+
+    if (!jobs.length) {
+      grid.innerHTML = `<div id="empty-state">No jobs match your filters.</div>`;
+      return;
+    }
+
+    grid.innerHTML = jobs.map(job => {
+      const skills = Array.isArray(job.skills)
+        ? job.skills.join(" · ")
+        : (job.skills ?? "");
+      const applyBtn = job.url
+        ? `<a class="btn-apply" href="${job.url}" target="_blank" rel="noopener">Apply ↗</a>`
+        : "";
+      return `
+        <div class="job-card">
+          <div class="job-company">${esc(job.company)}</div>
+          <div class="job-title">${esc(job.title)}</div>
+          <div class="job-meta">
+            ${job.location && job.location !== "N/A" ? `<span class="meta-pill">📍 ${esc(job.location)}</span>` : ""}
+            ${job.experience && job.experience !== "N/A" ? `<span class="meta-pill">💼 ${esc(job.experience)}</span>` : ""}
+            ${job.salary && job.salary !== "N/A" ? `<span class="meta-pill">💰 ${esc(job.salary)}</span>` : ""}
+          </div>
+          ${skills ? `<div class="job-skills">${esc(skills)}</div>` : ""}
+          <div class="job-actions">${applyBtn}</div>
+          ${job.posted && job.posted !== "N/A" ? `<div class="job-posted">Posted: ${esc(job.posted)}</div>` : ""}
+        </div>`;
+    }).join("");
+  }
+
+  function esc(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function applyFilters() {
+    const q = document.getElementById("search-input").value.toLowerCase();
+    const loc = document.getElementById("location-filter").value;
+    const sort = document.getElementById("sort-filter").value;
+
+    let filtered = allJobs.filter(job => {
+      const searchable = `${job.title} ${job.location} ${job.company} ${Array.isArray(job.skills) ? job.skills.join(" ") : job.skills}`.toLowerCase();
+      const matchesQ = !q || searchable.includes(q);
+      const matchesLoc = !loc || job.location === loc;
+      return matchesQ && matchesLoc;
+    });
+
+    if (sort === "title") filtered.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+    if (sort === "posted") filtered.reverse();
+
+    renderJobs(filtered);
+  }
+
+  document.getElementById("search-input").addEventListener("input", applyFilters);
+  document.getElementById("location-filter").addEventListener("change", applyFilters);
+  document.getElementById("sort-filter").addEventListener("change", applyFilters);
+
+  loadJobs();
+</script>
+</body>
+</html>
