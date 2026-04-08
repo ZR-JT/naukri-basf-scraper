@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/26567683/README.md)
 # 🏭 BASF India Jobs — Auto-Scraper + AI Database
 
 Automatically scrapes **BASF job listings in India** from [Naukri.com](https://www.naukri.com/basf-jobs-in-india?k=basf&l=india) every **4 hours** via GitHub Actions.  
