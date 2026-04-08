@@ -1,139 +1,176 @@
 /**
- * BASF India Jobs Scraper — Naukri.com
- * Runs via GitHub Actions every 4 hours.
- * Uses Playwright to handle JS-rendered content + intercepts Naukri's internal XHR API.
+ * BASF (Ludwigshafen) Hyderabad Jobs Scraper — Naukri.com
+ * Uses playwright-extra + stealth plugin to bypass bot detection.
  */
 
-const { chromium } = require("playwright");
+const { chromium } = require("playwright-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const fs = require("fs");
 const path = require("path");
 
+chromium.use(StealthPlugin());
+
 const TARGET_URL =
-  "https://www.naukri.com/basf-jobs-in-india?k=basf&l=india&nignbevent_src=jobsearchDeskGNB";
+  "https://www.naukri.com/ludwigshafen-jobs-in-hyderabad-secunderabad?k=ludwigshafen&l=hyderabad";
 
 const DATA_PATH = path.join(__dirname, "data", "jobs.json");
 
-// --- Filters ---
-const COMPANY_FILTER = /basf/i;          // must contain "BASF"
-const LOCATION_FILTER = /india/i;         // must be in India (belt-and-suspenders)
+const COMPANY_FILTER  = /basf|ludwigshafen/i;
+const LOCATION_FILTER = /hyderabad|secunderabad/i;
 
 async function scrape() {
-  console.log("🚀 Starting BASF India Jobs Scraper...");
+  console.log("🚀 Starting BASF Hyderabad Jobs Scraper (stealth mode)...");
 
   const browser = await chromium.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-blink-features=AutomationControlled",
+      "--disable-dev-shm-usage",
+    ],
   });
 
   const context = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1366, height: 768 },
+    locale: "en-US",
+    timezoneId: "Asia/Kolkata",
     extraHTTPHeaders: {
       "Accept-Language": "en-US,en;q=0.9",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     },
   });
 
-  const page = await context.newPage();
+  // Block images/fonts to speed up loading
+  await context.route("**/*.{png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf}", route => route.abort());
 
+  const page = await context.newPage();
   let capturedJobs = [];
 
-  // ── Intercept Naukri's internal XHR/JSON API calls ──────────────────────────
+  // ── Intercept Naukri's internal XHR/JSON API ────────────────────────────────
   page.on("response", async (response) => {
     const url = response.url();
     if (
       url.includes("naukri.com/jobapi") ||
       url.includes("naukri.com/v3/search") ||
-      url.includes("naukri.com/joblistingapi")
+      url.includes("naukri.com/joblistingapi") ||
+      (url.includes("naukri.com") && url.includes("search") && url.includes("json"))
     ) {
       try {
         const json = await response.json();
         const jobs = extractJobsFromApiResponse(json);
         if (jobs.length > 0) {
-          console.log(`📡 XHR captured ${jobs.length} jobs from API`);
+          console.log(`📡 XHR captured ${jobs.length} jobs from: ${url}`);
           capturedJobs.push(...jobs);
         }
       } catch {
-        // not JSON or empty — skip
+        // not JSON — skip
       }
     }
   });
 
-  // ── Navigate & scroll to trigger all XHR calls ──────────────────────────────
+  // ── Navigate ─────────────────────────────────────────────────────────────────
+  console.log("🌐 Navigating to Naukri...");
   try {
-    await page.goto(TARGET_URL, { waitUntil: "networkidle", timeout: 60000 });
+    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   } catch (err) {
-    console.warn("⚠️  networkidle timeout (continuing):", err.message);
+    console.warn("⚠️  Navigation timeout (continuing):", err.message);
   }
 
-  // Scroll to load lazy-loaded results
-  for (let i = 0; i < 5; i++) {
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(800);
+  // Wait for job cards to appear
+  try {
+    await page.waitForSelector(
+      '[class*="jobTuple"], [class*="job-card"], article, [class*="srp-jobtuple"]',
+      { timeout: 20000 }
+    );
+    console.log("✅ Job cards detected in DOM");
+  } catch {
+    console.warn("⚠️  Job card selector timed out, trying scroll anyway...");
   }
 
-  // ── Fallback: DOM scraping if XHR yielded nothing ───────────────────────────
+  // Human-like scroll
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.8));
+    await page.waitForTimeout(600 + Math.random() * 400);
+  }
+
+  // ── DOM scraping fallback ─────────────────────────────────────────────────────
   if (capturedJobs.length === 0) {
-    console.log("🔍 Falling back to DOM scraping...");
+    console.log("🔍 XHR empty — trying DOM scraping...");
+
+    const title = await page.title();
+    const bodySnippet = await page.evaluate(() => document.body?.innerText?.slice(0, 300) ?? "");
+    console.log(`📄 Page title: "${title}"`);
+    console.log(`📄 Body snippet: ${bodySnippet.replace(/\n/g, " ")}`);
+
     capturedJobs = await page.evaluate(() => {
-      const cards = Array.from(
-        document.querySelectorAll(
-          'article.jobTuple, div.jobTupleHeader, [class*="jobTuple"]'
-        )
-      );
-      return cards.map((card) => ({
-        title:
-          card.querySelector('[class*="title"], h2, h3')?.innerText?.trim() ??
-          "N/A",
-        company:
-          card.querySelector('[class*="company"], [class*="companyInfo"]')
-            ?.innerText?.trim() ?? "N/A",
-        location:
-          card.querySelector('[class*="location"], [class*="ellipsis"]')
-            ?.innerText?.trim() ?? "N/A",
-        experience:
-          card.querySelector('[class*="experience"]')?.innerText?.trim() ??
-          "N/A",
-        salary:
-          card.querySelector('[class*="salary"]')?.innerText?.trim() ?? "N/A",
-        skills:
-          card.querySelector('[class*="skill"], [class*="tag"]')?.innerText
-            ?.trim() ?? "N/A",
-        posted:
-          card.querySelector('[class*="date"], time')?.innerText?.trim() ??
-          "N/A",
-        url:
-          card.querySelector("a[href*='naukri.com']")?.href ??
-          card.querySelector("a")?.href ??
-          "",
-      }));
+      const selectors = [
+        '[class*="jobTuple"]',
+        '[class*="job-card"]',
+        '[class*="srp-jobtuple"]',
+        'article[class*="list"]',
+        'li[class*="result"]',
+        '[data-job-id]',
+      ];
+
+      let cards = [];
+      for (const sel of selectors) {
+        cards = Array.from(document.querySelectorAll(sel));
+        if (cards.length > 0) break;
+      }
+
+      return cards.map((card) => {
+        const link = card.querySelector("a[title], a[href*='naukri.com']") ?? card.querySelector("a");
+        return {
+          title:
+            card.querySelector('[class*="title"], h2, h3, [class*="jobTitle"]')
+              ?.innerText?.trim() ?? link?.getAttribute("title") ?? "N/A",
+          company:
+            card.querySelector('[class*="company"], [class*="companyInfo"], [class*="comp-name"]')
+              ?.innerText?.trim() ?? "N/A",
+          location:
+            card.querySelector('[class*="location"], [class*="loc"], [class*="ellipsis"]')
+              ?.innerText?.trim() ?? "N/A",
+          experience:
+            card.querySelector('[class*="experience"], [class*="exp"]')
+              ?.innerText?.trim() ?? "N/A",
+          salary:
+            card.querySelector('[class*="salary"], [class*="sal"]')
+              ?.innerText?.trim() ?? "N/A",
+          skills:
+            card.querySelector('[class*="skill"], [class*="tag"], [class*="techStack"]')
+              ?.innerText?.trim() ?? "N/A",
+          posted:
+            card.querySelector('[class*="date"], time, [class*="freshness"]')
+              ?.innerText?.trim() ?? "N/A",
+          url: link?.href ?? "",
+        };
+      });
     });
+
+    console.log(`🔍 DOM scraping found ${capturedJobs.length} raw cards`);
   }
 
   await browser.close();
 
-  // ── Filter: only BASF + India ────────────────────────────────────────────────
   const filtered = capturedJobs.filter((job) => {
-    const companyMatch = COMPANY_FILTER.test(job.company ?? "");
-    const locationMatch =
-      LOCATION_FILTER.test(job.location ?? "") ||
-      (job.location ?? "") === "N/A"; // keep if location unknown (already filtered by URL)
+    const companyMatch  = COMPANY_FILTER.test(job.company ?? "");
+    const locationMatch = LOCATION_FILTER.test(job.location ?? "") || (job.location ?? "") === "N/A";
     return companyMatch && locationMatch;
   });
 
-  console.log(
-    `✅ ${filtered.length} BASF India jobs after filtering (from ${capturedJobs.length} raw)`
-  );
+  console.log(`✅ ${filtered.length} jobs after filtering (from ${capturedJobs.length} raw)`);
 
-  // ── Write output ─────────────────────────────────────────────────────────────
   const output = {
     meta: {
       source: TARGET_URL,
       last_updated: new Date().toISOString(),
       total_jobs: filtered.length,
       filters_applied: {
-        company: "BASF (case-insensitive)",
-        location: "India",
+        company: "BASF / Ludwigshafen (case-insensitive)",
+        location: "Hyderabad / Secunderabad",
       },
     },
     jobs: filtered,
@@ -144,31 +181,18 @@ async function scrape() {
   console.log(`💾 Saved to ${DATA_PATH}`);
 }
 
-/**
- * Normalize jobs from Naukri's internal API response.
- * Naukri wraps jobs in jobDetails[] or results[].
- */
 function extractJobsFromApiResponse(json) {
-  const raw =
-    json?.jobDetails ?? json?.results ?? json?.data?.jobDetails ?? [];
+  const raw = json?.jobDetails ?? json?.results ?? json?.data?.jobDetails ?? [];
   return raw.map((j) => ({
-    title: j.title ?? j.jobTitle ?? "N/A",
-    company: j.companyName ?? j.company ?? "N/A",
-    location: (j.placeholders ?? [])
-      .find((p) => p.type === "location")
-      ?.label ?? j.location ?? "N/A",
-    experience: (j.placeholders ?? [])
-      .find((p) => p.type === "experience")
-      ?.label ?? j.experience ?? "N/A",
-    salary: (j.placeholders ?? [])
-      .find((p) => p.type === "salary")
-      ?.label ?? j.salary ?? "N/A",
-    skills: (j.tagsAndSkills ?? j.skills ?? "N/A"),
-    posted: j.footerPlaceholderLabel ?? j.createdDate ?? "N/A",
-    url: j.jdURL
-      ? `https://www.naukri.com${j.jdURL}`
-      : j.jobUrl ?? "",
-    job_id: j.jobId ?? j.id ?? null,
+    title:      j.title       ?? j.jobTitle   ?? "N/A",
+    company:    j.companyName ?? j.company    ?? "N/A",
+    location:   (j.placeholders ?? []).find((p) => p.type === "location")?.label   ?? j.location   ?? "N/A",
+    experience: (j.placeholders ?? []).find((p) => p.type === "experience")?.label ?? j.experience ?? "N/A",
+    salary:     (j.placeholders ?? []).find((p) => p.type === "salary")?.label     ?? j.salary     ?? "N/A",
+    skills:     j.tagsAndSkills ?? j.skills ?? "N/A",
+    posted:     j.footerPlaceholderLabel ?? j.createdDate ?? "N/A",
+    url:        j.jdURL ? `https://www.naukri.com${j.jdURL}` : j.jobUrl ?? "",
+    job_id:     j.jobId ?? j.id ?? null,
     description_snippet: j.jobDescription ?? j.snippet ?? "",
   }));
 }
