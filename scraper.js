@@ -1,91 +1,145 @@
 /**
  * BASF (Ludwigshafen) Hyderabad Jobs Scraper — Naukri.com
- * 
- * Calls Naukri's internal search JSON API directly via fetch.
- * No browser / Playwright needed — avoids GitHub Actions IP blocks.
+ * Direct API fetch with cookie handshake to bypass 406 rejection.
  */
 
 const fs   = require("fs");
 const path = require("path");
 
-const DATA_PATH = path.join(__dirname, "data", "jobs.json");
-
-// Naukri's internal search API (same endpoint the browser calls via XHR)
-const API_BASE = "https://www.naukri.com/jobapi/v3/search";
-
-const PARAMS = new URLSearchParams({
-  noOfResults:  "50",
-  urlType:      "search_by_keyword",
-  searchType:   "adv",
-  keyword:      "ludwigshafen",
-  location:     "hyderabad",
-  pageNo:       "1",
-  seoKey:       "ludwigshafen-jobs-in-hyderabad-secunderabad",
-  src:          "jobsearchDeskGNB",
-  latLong:      "",
-});
-
-// Headers that mimic a real browser XHR request to Naukri
-const HEADERS = {
-  "Accept":           "application/json, text/plain, */*",
-  "Accept-Language":  "en-US,en;q=0.9",
-  "appid":            "109",
-  "systemid":         "109",
-  "Content-Type":     "application/json",
-  "Referer":          "https://www.naukri.com/ludwigshafen-jobs-in-hyderabad-secunderabad?k=ludwigshafen&l=hyderabad",
-  "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "x-requested-with": "XMLHttpRequest",
-};
+const DATA_PATH  = path.join(__dirname, "data", "jobs.json");
+const HOME_URL   = "https://www.naukri.com/";
+const SEARCH_URL = "https://www.naukri.com/ludwigshafen-jobs-in-hyderabad-secunderabad?k=ludwigshafen&l=hyderabad";
+const API_URL    = "https://www.naukri.com/jobapi/v3/search";
 
 const COMPANY_FILTER  = /basf|ludwigshafen/i;
 const LOCATION_FILTER = /hyderabad|secunderabad/i;
 
-async function scrape() {
-  console.log("🚀 Starting BASF Hyderabad Jobs Scraper (direct API mode)...");
+// Rotate through a few realistic user-agents
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-  const url = `${API_BASE}?${PARAMS}`;
-  console.log(`📡 Fetching: ${url}`);
+async function getCookies() {
+  // Step 1: hit homepage to get session cookies
+  console.log("🍪 Fetching cookies from homepage...");
+  const r1 = await fetch(HOME_URL, {
+    headers: {
+      "User-Agent": UA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    redirect: "follow",
+  });
+  const cookies1 = parseCookies(r1.headers.getSetCookie?.() ?? []);
 
-  const res = await fetch(url, { headers: HEADERS });
+  // Step 2: hit the search page to pick up search-session cookies
+  console.log("🍪 Fetching search page for session cookies...");
+  const r2 = await fetch(SEARCH_URL, {
+    headers: {
+      "User-Agent": UA,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cookie": cookieStr(cookies1),
+      "Referer": HOME_URL,
+    },
+    redirect: "follow",
+  });
+  const cookies2 = parseCookies(r2.headers.getSetCookie?.() ?? []);
 
-  if (!res.ok) {
-    throw new Error(`API responded with HTTP ${res.status}: ${res.statusText}`);
+  return cookieStr({ ...cookies1, ...cookies2 });
+}
+
+function parseCookies(setCookieHeaders) {
+  const jar = {};
+  for (const header of setCookieHeaders) {
+    const [pair] = header.split(";");
+    const [k, v] = pair.split("=");
+    if (k && v) jar[k.trim()] = v.trim();
   }
+  return jar;
+}
 
-  const json = await res.json();
-  console.log(`📦 Raw API keys: ${Object.keys(json).join(", ")}`);
+function cookieStr(jar) {
+  return Object.entries(jar).map(([k,v]) => `${k}=${v}`).join("; ");
+}
 
-  const raw = json?.jobDetails ?? json?.results ?? json?.data?.jobDetails ?? [];
-  console.log(`📋 Raw jobs received: ${raw.length}`);
-
-  const allJobs = raw.map(normalizeJob);
-
-  const filtered = allJobs.filter((job) => {
-    const companyOk  = COMPANY_FILTER.test(job.company ?? "");
-    const locationOk = LOCATION_FILTER.test(job.location ?? "") ||
-                       (job.location ?? "") === "N/A"; // URL already scopes to Hyderabad
-    return companyOk && locationOk;
+async function fetchJobs(cookieHeader, pageNo = 1) {
+  const params = new URLSearchParams({
+    noOfResults: "50",
+    urlType:     "search_by_keyword",
+    searchType:  "adv",
+    keyword:     "ludwigshafen",
+    location:    "hyderabad",
+    pageNo:      String(pageNo),
+    seoKey:      "ludwigshafen-jobs-in-hyderabad-secunderabad",
+    src:         "jobsearchDeskGNB",
+    latLong:     "",
   });
 
-  console.log(`✅ ${filtered.length} jobs after filtering (from ${allJobs.length} raw)`);
+  const url = `${API_URL}?${params}`;
+  console.log(`📡 API call (page ${pageNo}): ${url}`);
 
-  // --- Page 2+ if more results exist ---
-  const totalCount = json?.noOfJobs ?? json?.totalCount ?? 0;
-  console.log(`ℹ️  Total available on Naukri: ${totalCount}`);
+  const res = await fetch(url, {
+    headers: {
+      "Accept":           "application/json, text/plain, */*",
+      "Accept-Language":  "en-US,en;q=0.9",
+      "appid":            "109",
+      "systemid":         "109",
+      "clientid":         "d3skt0p",
+      "Content-Type":     "application/json",
+      "Referer":          SEARCH_URL,
+      "User-Agent":       UA,
+      "Cookie":           cookieHeader,
+      "x-requested-with": "XMLHttpRequest",
+    },
+  });
 
-  if (totalCount > 50) {
-    console.log("📄 Fetching page 2...");
-    const page2 = await fetchPage(2);
-    filtered.push(...page2);
+  console.log(`📊 API response status: ${res.status}`);
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`API HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
+
+  return res.json();
+}
+
+async function scrape() {
+  console.log("🚀 Starting BASF Hyderabad Jobs Scraper...");
+
+  const cookieHeader = await getCookies();
+  console.log(`🍪 Cookies acquired: ${cookieHeader.slice(0, 80)}...`);
+
+  const json = await fetchJobs(cookieHeader, 1);
+  console.log(`📦 API keys: ${Object.keys(json).join(", ")}`);
+
+  const totalCount = json?.noOfJobs ?? json?.totalCount ?? 0;
+  console.log(`ℹ️  Total jobs on Naukri: ${totalCount}`);
+
+  let raw = json?.jobDetails ?? json?.results ?? json?.data?.jobDetails ?? [];
+  console.log(`📋 Page 1: ${raw.length} jobs`);
+
+  // Fetch more pages if needed
+  if (totalCount > 50) {
+    const page2 = await fetchJobs(cookieHeader, 2);
+    const raw2  = page2?.jobDetails ?? page2?.results ?? [];
+    console.log(`📋 Page 2: ${raw2.length} jobs`);
+    raw = [...raw, ...raw2];
+  }
+
+  const allJobs  = raw.map(normalizeJob);
+  const filtered = allJobs.filter(j =>
+    COMPANY_FILTER.test(j.company ?? "") &&
+    (LOCATION_FILTER.test(j.location ?? "") || j.location === "N/A")
+  );
+
+  console.log(`✅ ${filtered.length} BASF Hyderabad jobs (from ${allJobs.length} raw)`);
 
   const output = {
     meta: {
-      source: "https://www.naukri.com/ludwigshafen-jobs-in-hyderabad-secunderabad?k=ludwigshafen&l=hyderabad",
+      source:       SEARCH_URL,
       last_updated: new Date().toISOString(),
       total_jobs:   filtered.length,
       filters_applied: {
-        company:  "BASF / Ludwigshafen (case-insensitive)",
+        company:  "BASF / Ludwigshafen",
         location: "Hyderabad / Secunderabad",
       },
     },
@@ -94,19 +148,7 @@ async function scrape() {
 
   fs.mkdirSync(path.dirname(DATA_PATH), { recursive: true });
   fs.writeFileSync(DATA_PATH, JSON.stringify(output, null, 2), "utf-8");
-  console.log(`💾 Saved ${filtered.length} jobs to ${DATA_PATH}`);
-}
-
-async function fetchPage(pageNo) {
-  const p = new URLSearchParams({ ...Object.fromEntries(PARAMS), pageNo: String(pageNo) });
-  const res = await fetch(`${API_BASE}?${p}`, { headers: HEADERS });
-  if (!res.ok) return [];
-  const json = await res.json();
-  const raw  = json?.jobDetails ?? json?.results ?? json?.data?.jobDetails ?? [];
-  return raw.map(normalizeJob).filter(j =>
-    COMPANY_FILTER.test(j.company ?? "") &&
-    (LOCATION_FILTER.test(j.location ?? "") || j.location === "N/A")
-  );
+  console.log(`💾 Saved to ${DATA_PATH}`);
 }
 
 function normalizeJob(j) {
