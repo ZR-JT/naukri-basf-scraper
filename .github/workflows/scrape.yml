@@ -2,8 +2,8 @@ name: Scrape BASF Hyderabad Jobs
 
 on:
   schedule:
-    - cron: "0 */4 * * *"   # Every 4 hours (UTC)
-  workflow_dispatch:          # Manual trigger from GitHub UI
+    - cron: "0 */4 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,12 +21,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: 📦 Install dependencies
         run: npm install
 
-      - name: 🎭 Install Playwright browsers
+      - name: 🎭 Install Playwright Chromium
         run: npx playwright install chromium --with-deps
 
       - name: 🕷️ Run scraper
@@ -37,7 +36,7 @@ jobs:
         run: |
           git diff --quiet data/jobs.json && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
 
-      - name: 💾 Commit & push updated jobs
+      - name: 💾 Commit & push
         if: steps.diff.outputs.changed == 'true'
         run: |
           git config user.name  "github-actions[bot]"
@@ -46,6 +45,6 @@ jobs:
           git commit -m "chore: update BASF Hyderabad jobs [$(date -u '+%Y-%m-%d %H:%M UTC')]"
           git push
 
-      - name: ✅ No changes detected
+      - name: ✅ No changes
         if: steps.diff.outputs.changed == 'false'
         run: echo "Jobs data unchanged since last run."
